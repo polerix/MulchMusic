@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head><style>
+body{margin:0;background:#000;display:flex;justify-content:center;align-items:center;height:100vh}
+canvas{image-rendering:pixelated}
+</style></head>
+<body>
+<canvas id="c" width="480" height="360"></canvas>
+<script>
+const c = document.getElementById('c');
+const ctx = c.getContext('2d');
+const W = c.width, H = c.height, CX = W/2, CY = H/2;
+
+// Two fake "scenes" to transition between
+function sceneA(t){
+  ctx.fillStyle = '#1a3a5c';
+  ctx.fillRect(0,0,W,H);
+  ctx.fillStyle = '#ff6b9d';
+  for(let i=0;i<5;i++){
+    ctx.fillRect(40+i*80, 100+Math.sin(t/300+i)*20, 40, 60);
+  }
+  ctx.fillStyle = '#fff';
+  ctx.font = '20px monospace';
+  ctx.fillText('SCENE A', 20, 30);
+}
+function sceneB(t){
+  ctx.fillStyle = '#5c1a3a';
+  ctx.fillRect(0,0,W,H);
+  ctx.fillStyle = '#9dff6b';
+  for(let i=0;i<8;i++){
+    ctx.beginPath();
+    ctx.arc(60+i*50, 200+Math.cos(t/400+i)*30, 15, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.fillStyle = '#fff';
+  ctx.font = '20px monospace';
+  ctx.fillText('SCENE B', 20, 30);
+}
+
+// 5-point star path
+function starPath(cx, cy, outer, inner, rot){
+  ctx.beginPath();
+  for(let i=0;i<10;i++){
+    const r = i%2===0 ? outer : inner;
+    const a = rot + i * Math.PI/5 - Math.PI/2;
+    const x = cx + Math.cos(a)*r;
+    const y = cy + Math.sin(a)*r;
+    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  }
+  ctx.closePath();
+}
+
+// Particle pool for sparkles
+const particles = [];
+function spawnParticles(){
+  for(let i=0;i<3;i++){
+    const a = Math.random()*Math.PI*2;
+    const sp = 1 + Math.random()*3;
+    particles.push({
+      x: CX, y: CY,
+      vx: Math.cos(a)*sp, vy: Math.sin(a)*sp,
+      life: 1, hue: Math.random()*360
+    });
+  }
+}
+
+const CYCLE = 4000; // ms full loop
+
+function frame(t){
+  const p = (t % CYCLE) / CYCLE; // 0..1
+  // Phase: 0..0.4 scene A, 0.4..0.6 transition, 0.6..1 scene B
+  const showB = p > 0.5;
+  const tp = (p - 0.4) / 0.2; // 0..1 during transition window
+  const inTransition = p >= 0.4 && p <= 0.6;
+
+  // Draw current scene
+  if(!showB) sceneA(t); else sceneB(t);
+
+  if(inTransition){
+    const phase = Math.max(0, Math.min(1, tp));
+    // Star grows then shrinks
+    const grow = phase < 0.5 ? phase*2 : (1-phase)*2;
+    const radius = grow * Math.hypot(W,H) * 0.7;
+    const rot = t/200;
+
+    // Speed lines
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = `hsl(${(t/10)%360},100%,70%)`;
+    ctx.lineWidth = 2;
+    for(let i=0;i<24;i++){
+      const a = (i/24)*Math.PI*2 + rot*0.3;
+      const r1 = radius*0.3, r2 = radius*1.2;
+      ctx.beginPath();
+      ctx.moveTo(CX+Math.cos(a)*r1, CY+Math.sin(a)*r1);
+      ctx.lineTo(CX+Math.cos(a)*r2, CY+Math.sin(a)*r2);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Star mask reveals next scene
+    ctx.save();
+    starPath(CX, CY, radius, radius*0.45, rot);
+    ctx.clip();
+    if(!showB){
+      // outgoing: star shows scene B emerging
+      sceneB(t);
+    } else {
+      // incoming half: already showing B, star shows A receding
+      sceneA(t);
+    }
+    ctx.restore();
+
+    // Star outline glow with hue cycle
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for(let g=0; g<3; g++){
+      starPath(CX, CY, radius+g*4, radius*0.45+g*2, rot);
+      ctx.strokeStyle = `hsla(${(t/8+g*40)%360},100%,75%,${0.6-g*0.2})`;
+      ctx.lineWidth = 3-g;
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Sparkles
+    spawnParticles();
+  }
+
+  // Update + draw particles
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for(let i=particles.length-1;i>=0;i--){
+    const pt = particles[i];
+    pt.x += pt.vx; pt.y += pt.vy;
+    pt.life -= 0.02;
+    if(pt.life<=0){ particles.splice(i,1); continue; }
+    ctx.fillStyle = `hsla(${pt.hue},100%,80%,${pt.life})`;
+    const s = pt.life * 4;
+    ctx.fillRect(pt.x-s/2, pt.y-s/2, s, s);
+  }
+  ctx.restore();
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
